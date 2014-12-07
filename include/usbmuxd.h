@@ -88,6 +88,7 @@ typedef void (*usbmuxd_event_cb_t) (const usbmuxd_event_t *event, void *user_dat
  * @return 0 on success or negative on error.
  */
 int usbmuxd_subscribe(usbmuxd_event_cb_t callback, void *user_data);
+int usbmuxd_subscribe_full(usbmuxd_event_cb_t callback, void *user_data, int *closure_id);
 
 /**
  * Unsubscribe callback.
@@ -95,6 +96,7 @@ int usbmuxd_subscribe(usbmuxd_event_cb_t callback, void *user_data);
  * @return only 0 for now.
  */
 int usbmuxd_unsubscribe();
+int usbmuxd_unsubscribe_full(int closure_id);
 
 /**
  * Contacts usbmuxd and retrieves a list of connected devices.

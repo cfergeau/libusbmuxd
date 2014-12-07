@@ -110,6 +110,15 @@ static int libusbmuxd_debug = 0;
 #define LIBUSBMUXD_ERROR(format, ...) LIBUSBMUXD_DEBUG(0, format, __VA_ARGS__)
 
 static struct collection devices;
+
+struct usbmuxd_event_closure_t {
+	int listenfd;
+	usbmuxd_event_cb_t callback;
+	void *user_data;
+};
+static struct collection event_cbs = { 0, };
+static int global_event_cb_id = -1;
+
 static usbmuxd_event_cb_t event_cb = NULL;
 #ifdef WIN32
 HANDLE devmon = NULL;
@@ -1059,14 +1068,22 @@ static void *device_monitor(void *data)
 	return NULL;
 }
 
-USBMUXD_API int usbmuxd_subscribe(usbmuxd_event_cb_t callback, void *user_data)
+USBMUXD_API int usbmuxd_subscribe_full(usbmuxd_event_cb_t callback, void *user_data, int *closure_id)
 {
 	int res;
+	struct usbmuxd_event_closure_t *closure;
 
 	if (!callback) {
 		return -EINVAL;
 	}
-	event_cb = callback;
+
+	closure = malloc(sizeof(struct usbmuxd_event_closure_t));
+	if (closure == NULL)
+		return -ENOMEM;
+	closure->callback = callback;
+	closure->user_data = user_data;
+	closure->listenfd = -1;
+	*closure_id = collection_add(&event_cbs, closure);
 
 #ifdef WIN32
 	res = 0;
@@ -1084,10 +1101,29 @@ USBMUXD_API int usbmuxd_subscribe(usbmuxd_event_cb_t callback, void *user_data)
 	return 0;
 }
 
-USBMUXD_API int usbmuxd_unsubscribe()
+USBMUXD_API int usbmuxd_subscribe(usbmuxd_event_cb_t callback, void *user_data)
+{
+	if (global_event_cb_id != -1) {
+		void *closure;
+		closure = collection_remove_index(&event_cbs, global_event_cb_id);
+		free(closure);
+	}
+	return usbmuxd_subscribe_full(callback, user_data, &global_event_cb_id);
+}
+
+USBMUXD_API int usbmuxd_unsubscribe_full(int closure_id)
 {
 	int res;
-	event_cb = NULL;
+	void *closure;
+
+	closure = collection_remove_index(&event_cbs, closure_id);
+	free(closure);
+
+	if (collection_count(&event_cbs) != 0) {
+		/* Some more listeners are remaining, we cannot tear down the
+		 * monitoring thread */
+		return 0;
+	}
 
 	socket_shutdown(listenfd, SHUT_RDWR);
 
@@ -1109,6 +1145,17 @@ USBMUXD_API int usbmuxd_unsubscribe()
 	}
 #endif
 
+	return 0;
+}
+
+USBMUXD_API int usbmuxd_unsubscribe()
+{
+	if (global_event_cb_id != -1) {
+		int status;
+		status = usbmuxd_unsubscribe_full(global_event_cb_id);
+		global_event_cb_id = -1;
+		return status;
+	}
 	return 0;
 }
 
