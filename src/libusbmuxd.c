@@ -810,18 +810,21 @@ static int send_pair_record_packet(int sfd, uint32_t tag, const char* msgtype, c
  * A reference to a populated usbmuxd_event_t with information about the event
  * and the corresponding device will be passed to the callback function.
  */
-static void generate_event(usbmuxd_event_cb_t callback, const usbmuxd_device_info_t *dev, enum usbmuxd_event_type event, void *user_data)
+static void generate_event(const usbmuxd_device_info_t *dev, enum usbmuxd_event_type event)
 {
 	usbmuxd_event_t ev;
+	struct usbmuxd_event_closure_t *closure;
 
-	if (!callback || !dev) {
+	if (!dev) {
 		return;
 	}
 
 	ev.event = event;
 	memcpy(&ev.device, dev, sizeof(usbmuxd_device_info_t));
 
-	callback(&ev, user_data);
+	FOREACH(closure, &event_cbs) {
+		closure->callback(&ev, closure->user_data);
+	} ENDFOREACH;
 }
 
 static int usbmuxd_listen_poll()
@@ -957,7 +960,7 @@ retry:
  * Waits for an event to occur, i.e. a packet coming from usbmuxd.
  * Calls generate_event to pass the event via callback to the client program.
  */
-static int get_next_event(int sfd, usbmuxd_event_cb_t callback, void *user_data)
+static int get_next_event(int sfd)
 {
 	struct usbmuxd_header hdr;
 	void *payload = NULL;
@@ -969,7 +972,7 @@ static int get_next_event(int sfd, usbmuxd_event_cb_t callback, void *user_data)
 		// generate remove events for every device that
 		// is still present so applications know about it
 		FOREACH(usbmuxd_device_info_t *dev, &devices) {
-			generate_event(callback, dev, UE_DEVICE_REMOVE, user_data);
+			generate_event(dev, UE_DEVICE_REMOVE);
 			collection_remove(&devices, dev);
 			free(dev);
 		} ENDFOREACH
@@ -984,7 +987,7 @@ static int get_next_event(int sfd, usbmuxd_event_cb_t callback, void *user_data)
 	if (hdr.message == MESSAGE_DEVICE_ADD) {
 		usbmuxd_device_info_t *devinfo = (usbmuxd_device_info_t*)payload;
 		collection_add(&devices, devinfo);
-		generate_event(callback, devinfo, UE_DEVICE_ADD, user_data);
+		generate_event(devinfo, UE_DEVICE_ADD);
 		payload = NULL;
 	} else if (hdr.message == MESSAGE_DEVICE_REMOVE) {
 		uint32_t handle;
@@ -996,7 +999,7 @@ static int get_next_event(int sfd, usbmuxd_event_cb_t callback, void *user_data)
 		if (!devinfo) {
 			LIBUSBMUXD_DEBUG(1, "%s: WARNING: got device remove message for handle %d, but couldn't find the corresponding handle in the device list. This event will be ignored.\n", __func__, handle);
 		} else {
-			generate_event(callback, devinfo, UE_DEVICE_REMOVE, user_data);
+			generate_event(devinfo, UE_DEVICE_REMOVE);
 			collection_remove(&devices, devinfo);
 			free(devinfo);
 		}
@@ -1010,7 +1013,7 @@ static int get_next_event(int sfd, usbmuxd_event_cb_t callback, void *user_data)
 		if (!devinfo) {
 			LIBUSBMUXD_DEBUG(1, "%s: WARNING: got paired message for device handle %d, but couldn't find the corresponding handle in the device list. This event will be ignored.\n", __func__, handle);
 		} else {
-			generate_event(callback, devinfo, UE_DEVICE_PAIRED, user_data);
+			generate_event(devinfo, UE_DEVICE_PAIRED);
 		}
 	} else if (hdr.length > 0) {
 		LIBUSBMUXD_DEBUG(1, "%s: Unexpected message type %d length %d received!\n", __func__, hdr.message, hdr.length);
@@ -1053,7 +1056,7 @@ static void *device_monitor(void *data)
 		}
 
 		while (event_cb) {
-			int res = get_next_event(listenfd, event_cb, data);
+			int res = get_next_event(listenfd);
 			if (res < 0) {
 			    break;
 			}
@@ -1087,12 +1090,12 @@ USBMUXD_API int usbmuxd_subscribe_full(usbmuxd_event_cb_t callback, void *user_d
 
 #ifdef WIN32
 	res = 0;
-	devmon = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)device_monitor, user_data, 0, NULL);
+	devmon = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)device_monitor, NULL, 0, NULL);
 	if (devmon == NULL) {
 		res = GetLastError();
 	}
 #else
-	res = pthread_create(&devmon, NULL, device_monitor, user_data);
+	res = pthread_create(&devmon, NULL, device_monitor, NULL);
 #endif
 	if (res != 0) {
 		LIBUSBMUXD_DEBUG(1, "%s: ERROR: Could not start device watcher thread!\n", __func__);
