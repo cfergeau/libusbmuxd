@@ -116,6 +116,7 @@ struct usbmuxd_event_closure_t {
 	usbmuxd_event_cb_t callback;
 	void *user_data;
 };
+static pthread_mutex_t event_cbs_mutex = PTHREAD_MUTEX_INITIALIZER;
 static struct collection event_cbs = { 0, };
 static int global_event_cb_id = -1;
 
@@ -822,9 +823,13 @@ static void generate_event(const usbmuxd_device_info_t *dev, enum usbmuxd_event_
 	ev.event = event;
 	memcpy(&ev.device, dev, sizeof(usbmuxd_device_info_t));
 
+	if (pthread_mutex_lock(&event_cbs_mutex) != 0) {
+		return;
+	}
 	FOREACH(closure, &event_cbs) {
 		closure->callback(&ev, closure->user_data);
 	} ENDFOREACH;
+	pthread_mutex_unlock(&event_cbs_mutex);
 }
 
 static int usbmuxd_listen_poll()
@@ -1086,7 +1091,13 @@ USBMUXD_API int usbmuxd_subscribe_full(usbmuxd_event_cb_t callback, void *user_d
 	closure->callback = callback;
 	closure->user_data = user_data;
 	closure->listenfd = -1;
+	res = pthread_mutex_lock(&event_cbs_mutex);
+	if (res != 0) {
+		free(closure);
+		return res;
+	}
 	*closure_id = collection_add(&event_cbs, closure);
+	pthread_mutex_unlock(&event_cbs_mutex);
 
 #ifdef WIN32
 	res = 0;
