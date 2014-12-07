@@ -1053,14 +1053,14 @@ static void *device_monitor(void *data)
 #ifndef WIN32
 	pthread_cleanup_push(device_monitor_cleanup, NULL);
 #endif
-	while (event_cb) {
-
+	/* FIXME: not thread safe */
+	while (collection_count(&event_cbs) != 0) {
 		listenfd = usbmuxd_listen();
 		if (listenfd < 0) {
 			continue;
 		}
 
-		while (event_cb) {
+		while (1) {
 			int res = get_next_event(listenfd);
 			if (res < 0) {
 			    break;
