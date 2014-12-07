@@ -72,6 +72,15 @@ void collection_remove(struct collection *col, void *element)
 	fprintf(stderr, "%s: WARNING: element %p not present in collection %p (cap %d)", __func__, element, col, col->capacity);
 }
 
+void *collection_remove_index(struct collection *col, int index)
+{
+	void *element;
+
+	element = col->list[index];
+	col->list[index] = NULL;
+	return element;
+}
+
 int collection_count(struct collection *col)
 {
 	int i, cnt = 0;
