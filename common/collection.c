@@ -45,6 +45,9 @@ void collection_free(struct collection *col)
 int collection_add(struct collection *col, void *element)
 {
 	int i;
+	if (col->list == NULL) {
+		collection_init(col);
+	}
 	for(i=0; i<col->capacity; i++) {
 		if(!col->list[i]) {
 			col->list[i] = element;
