@@ -42,19 +42,22 @@ void collection_free(struct collection *col)
 	col->capacity = 0;
 }
 
-void collection_add(struct collection *col, void *element)
+int collection_add(struct collection *col, void *element)
 {
 	int i;
 	for(i=0; i<col->capacity; i++) {
 		if(!col->list[i]) {
 			col->list[i] = element;
-			return;
+			return i;
 		}
 	}
 	col->list = realloc(col->list, sizeof(void*) * col->capacity * 2);
 	memset(&col->list[col->capacity], 0, sizeof(void *) * col->capacity);
 	col->list[col->capacity] = element;
+	i = col->capacity;
 	col->capacity *= 2;
+
+	return i;
 }
 
 void collection_remove(struct collection *col, void *element)
