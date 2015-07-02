@@ -23,6 +23,7 @@
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
+#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -1149,6 +1150,8 @@ USBMUXD_API int usbmuxd_unsubscribe_full(int closure_id)
 		}
 	}
 #else
+	// don't kill oneself
+	assert(!pthread_equal(pthread_self(), devmon));
 	res = pthread_kill(devmon, 0);
 	if (res == 0) {
 		pthread_cancel(devmon);
