@@ -122,6 +122,7 @@ Makefile
 common/Makefile
 src/Makefile
 include/Makefile
+tests/Makefile
 tools/Makefile
 libusbmuxd.pc
 ])
