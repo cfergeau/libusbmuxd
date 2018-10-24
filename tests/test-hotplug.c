@@ -34,15 +34,35 @@ static void hotplug_cb1(const usbmuxd_event_t *event, void *user_data)
 	*flags |= 1;
 }
 
+static void hotplug_cb2(const usbmuxd_event_t *event, void *user_data)
+{
+	int *flags = user_data;
+	printf("%s(%d): %d\n", __func__, event->event, *flags);
+	assert((*flags & 2) == 0);
+	*flags |= 2;
+}
+
+
 int main(int argc, char **argv)
 {
 	int flags;
+	int id1;
+	int id2;
 
-	usbmuxd_subscribe(hotplug_cb1, &flags);
+	usbmuxd_subscribe_full(hotplug_cb1, &flags, &id1);
+	usbmuxd_subscribe_full(hotplug_cb2, &flags, &id2);
 
 	printf("Plug in iDevice\n");
 	flags = 0;
-	while (flags != 1) {
+	while (flags != 3) {
+		usleep(100000);
+	}
+
+	flags = 0;
+	usbmuxd_unsubscribe_full(id2);
+
+	printf("Unplug/replug iDevice\n");
+	while (flags != 2) {
 		usleep(100000);
 	}
 
