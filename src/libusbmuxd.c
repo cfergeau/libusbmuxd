@@ -127,6 +127,7 @@ HANDLE devmon = NULL;
 #else
 pthread_t devmon;
 #endif
+static int devmon_started = 0;
 static int listenfd = -1;
 
 static volatile int use_tag = 0;
@@ -1077,6 +1078,27 @@ static void *device_monitor(void *data)
 	return NULL;
 }
 
+static int create_devmon_thread(void)
+{
+	int res = 0;
+
+#ifdef WIN32
+	devmon = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)device_monitor, NULL, 0, NULL);
+	if (devmon == NULL) {
+		res = GetLastError();
+	}
+#else
+	res = pthread_create(&devmon, NULL, device_monitor, NULL);
+#endif
+	if (res != 0) {
+		LIBUSBMUXD_DEBUG(1, "%s: ERROR: Could not start device watcher thread!\n", __func__);
+	} else {
+		devmon_started = 1;
+	}
+
+	return res;
+}
+
 USBMUXD_API int usbmuxd_subscribe_full(usbmuxd_event_cb_t callback, void *user_data, int *closure_id)
 {
 	int res;
@@ -1100,20 +1122,11 @@ USBMUXD_API int usbmuxd_subscribe_full(usbmuxd_event_cb_t callback, void *user_d
 	*closure_id = collection_add(&event_cbs, closure);
 	pthread_mutex_unlock(&event_cbs_mutex);
 
-#ifdef WIN32
-	res = 0;
-	devmon = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)device_monitor, NULL, 0, NULL);
-	if (devmon == NULL) {
-		res = GetLastError();
+	if (!devmon_started) {
+		res = create_devmon_thread();
 	}
-#else
-	res = pthread_create(&devmon, NULL, device_monitor, NULL);
-#endif
-	if (res != 0) {
-		LIBUSBMUXD_DEBUG(1, "%s: ERROR: Could not start device watcher thread!\n", __func__);
-		return res;
-	}
-	return 0;
+
+	return res;
 }
 
 USBMUXD_API int usbmuxd_subscribe(usbmuxd_event_cb_t callback, void *user_data)
@@ -1143,7 +1156,7 @@ USBMUXD_API int usbmuxd_unsubscribe_full(int closure_id)
 	socket_shutdown(listenfd, SHUT_RDWR);
 
 #ifdef WIN32
-	if (devmon != NULL) {
+	if (devmon_started) {
 		res = WaitForSingleObject(devmon, INFINITE);
 		if (res != 0) {
 			return res;
@@ -1161,6 +1174,7 @@ USBMUXD_API int usbmuxd_unsubscribe_full(int closure_id)
 		return res;
 	}
 #endif
+	devmon_started = 0;
 
 	return 0;
 }
