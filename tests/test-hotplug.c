@@ -26,22 +26,30 @@
 #include <stdio.h>
 #include <unistd.h>
 
+static void hotplug_generic_cb(enum usbmuxd_event_type event, int flag, int *flags)
+{
+	printf("%s(%d): %d %d\n", __func__, event, flag, *flags);
+	assert((*flags & flag) == 0);
+	switch (event) {
+		case UE_DEVICE_REMOVE:
+		case UE_DEVICE_PAIRED:
+			break;
+		case UE_DEVICE_ADD:
+			*flags |= flag;
+		default:
+			break;
+	}
+}
+
 static void hotplug_cb1(const usbmuxd_event_t *event, void *user_data)
 {
-	int *flags = user_data;
-	printf("%s(%d): %d\n", __func__, event->event, *flags);
-	assert((*flags & 1) == 0);
-	*flags |= 1;
+	hotplug_generic_cb(event->event, 1, user_data);
 }
 
 static void hotplug_cb2(const usbmuxd_event_t *event, void *user_data)
 {
-	int *flags = user_data;
-	printf("%s(%d): %d\n", __func__, event->event, *flags);
-	assert((*flags & 2) == 0);
-	*flags |= 2;
+	hotplug_generic_cb(event->event, 2, user_data);
 }
-
 
 int main(int argc, char **argv)
 {
@@ -50,19 +58,17 @@ int main(int argc, char **argv)
 	int id2;
 
 	usbmuxd_subscribe_full(hotplug_cb1, &flags, &id1);
-	usbmuxd_subscribe_full(hotplug_cb2, &flags, &id2);
 
 	printf("Plug in iDevice\n");
 	flags = 0;
-	while (flags != 3) {
+	while (flags != 1) {
 		usleep(100000);
 	}
 
 	flags = 0;
-	usbmuxd_unsubscribe_full(id2);
-
+	usbmuxd_subscribe_full(hotplug_cb2, &flags, &id2);
 	printf("Unplug/replug iDevice\n");
-	while (flags != 2) {
+	while (flags != 3) {
 		usleep(100000);
 	}
 
